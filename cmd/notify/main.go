@@ -15,35 +15,40 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var serverUrl string
-var interval time.Duration
-var runDummyServer bool
+var (
+	serverUrl      string
+	interval       time.Duration
+	shutdown       chan os.Signal
+	runDummyServer bool
+)
 
 func main() {
 	setupFlags()
 
-	shutdown := make(chan os.Signal, 1)
+	shutdown = make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
 	if runDummyServer {
 		go dummyServer()
-		time.Sleep(time.Second * 1)
 	}
 
-	processInput(shutdown)
+	processInput()
 }
 
-func processInput(shutdown chan os.Signal) {
+func processInput() {
 	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		for {
-			select {
-			case <-shutdown:
-				log.Println("Gracefully exiting")
-				// do stuff before exiting
-				return
-			case <-time.After(interval):
-				notifier.Notify(serverUrl, scanner.Text())
+	notifier := notifier.New(serverUrl)
+
+	for {
+		select {
+		case <-shutdown:
+			notifier.StopWorkers()
+			return
+		case <-time.After(interval):
+			if scanner.Scan() {
+				notifier.Notify(scanner.Text())
+			} else {
+				notifier.StopWorkers()
 			}
 		}
 	}
@@ -62,7 +67,7 @@ func setupFlags() {
 
 func dummyServer() {
 	http.HandleFunc("/notify", func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second * 3)
 		body, _ := ioutil.ReadAll(r.Body)
 		log.Printf("Received request: %s", body)
 		w.Write([]byte("OK"))
