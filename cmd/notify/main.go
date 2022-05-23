@@ -38,17 +38,17 @@ func main() {
 func processInput() {
 	scanner := bufio.NewScanner(os.Stdin)
 	notifier := notifier.New(serverUrl)
+	defer notifier.StopWorkers()
 
 	for {
 		select {
 		case <-shutdown:
-			notifier.StopWorkers()
 			return
 		case <-time.After(interval):
 			if scanner.Scan() {
 				notifier.Notify(scanner.Text())
 			} else {
-				notifier.StopWorkers()
+				return
 			}
 		}
 	}
